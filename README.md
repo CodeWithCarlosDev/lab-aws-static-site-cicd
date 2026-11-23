@@ -171,6 +171,23 @@ El *state* es la "memoria" de Terraform: registra qué recursos ha creado y con 
 
 Antes del primer push, el bucket estaba vacío (`Objects (0)`). Que el archivo aparezca confirma que las credenciales de los secretos funcionan y que el backend está bien configurado. Aunque el `terraform apply` terminó con un error de permisos, Terraform guardó el avance en el state, por lo que al repetir el pipeline continuará desde ese punto.
 
+## Evidencia: el bucket del sitio web creado por Terraform
+
+![Bucket luiscarlos-static-site-lab creado y vacío](docs/img/bucket-web-vacio.png)
+
+La captura muestra el bucket `luiscarlos-static-site-lab` en la consola de S3. Este bucket **no se creó a mano**: lo creó Terraform desde el pipeline, a partir del recurso `aws_s3_bucket.web` de `infra/main.tf`. En el log de *Terraform Apply* aparece como creado en 2 segundos, antes de que ocurrieran los errores de permisos.
+
+Se encuentra vacío (`Objects (0)`) porque el pipeline se detuvo en el paso 5 (*Terraform Apply*). Los pasos siguientes, entre ellos *Deploy to S3* (`aws s3 sync app/`), que sube `index.html` y `styles.css`, **nunca llegaron a ejecutarse**.
+
+| Recurso de Terraform | Resultado |
+|---|---|
+| `aws_s3_bucket.web` (el bucket) | ✅ Creado |
+| `aws_s3_bucket_website_configuration.web_config` | ❌ `AccessDenied` en `s3:PutBucketWebsite` |
+| `aws_s3_bucket_public_access_block.web_public` | ❌ `AccessDenied` en `s3:PutBucketPublicAccessBlock` |
+| `aws_s3_bucket_policy.public_read` | ⏸️ No se intentó: depende del bloqueo público (`depends_on`) |
+
+Cuando se amplíen los permisos del usuario IAM y se vuelva a ejecutar el pipeline, Terraform continuará desde este punto: no volverá a crear el bucket, aplicará los recursos pendientes y el paso *Deploy to S3* llenará el bucket con los archivos del sitio.
+
 ## Seguridad y limpieza
 
 - El bucket del sitio es **público a propósito**, porque sirve contenido web. No debe usarse para datos sensibles.

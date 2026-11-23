@@ -139,6 +139,7 @@ Ejemplos usados en este laboratorio:
 - ✅ Repositorio, estructura y sitio web creados.
 - ✅ Bucket del state creado y `terraform init` exitoso.
 - ✅ `terraform plan` correcto: 4 recursos por crear.
+- ✅ El pipeline se autenticó con AWS, creó el bucket del sitio web (`luiscarlos-static-site-lab`) y **guardó el `terraform.tfstate` en S3** (ver [evidencia](#evidencia-el-state-de-terraform-en-s3)).
 - ⚠️ El `terraform apply` falló con `AccessDenied` porque el usuario IAM de la cuenta de entrenamiento no tenía los permisos `s3:PutBucketWebsite` ni `s3:PutBucketPublicAccessBlock`. El código es válido; el bloqueo es de **permisos de AWS**, no de Terraform ni de GitHub Actions.
 - 🔜 Pendiente: solicitar la ampliación de permisos al administrador de la cuenta y volver a ejecutar el pipeline (*Re-run jobs*).
 
@@ -149,6 +150,26 @@ Ejemplos usados en este laboratorio:
 - El mensaje genérico `exit code 1` no indica la causa: hay que abrir el paso con la X roja y leer las líneas `Error:`.
 - Un error de permisos (IAM) se distingue de un error de código porque el `plan` se genera bien y falla al **aplicar**.
 - Terraform guarda en el state lo que sí alcanzó a crear, así que un reintento continúa desde ese punto.
+
+## Evidencia: el state de Terraform en S3
+
+![terraform.tfstate dentro del bucket del state](docs/img/state-en-s3.png)
+
+La captura muestra el archivo `terraform.tfstate` dentro del bucket `bucket-luiscarlos-terraform`, en la ruta `github-actions-demo/`. Esa ruta es la definida en el bloque `backend "s3"` de `infra/main.tf`:
+
+```hcl
+key = "github-actions-demo/terraform.tfstate"
+```
+
+El *state* es la "memoria" de Terraform: registra qué recursos ha creado y con qué configuración. Se guarda en S3 y no en el disco local porque el runner de GitHub Actions es una máquina temporal que se destruye al terminar cada ejecución; así, en cada nueva ejecución Terraform recupera el estado anterior y sabe qué ya existe.
+
+| Elemento de la captura | Qué demuestra |
+|---|---|
+| Archivo `terraform.tfstate` en `github-actions-demo/` | El `terraform init` se conectó al backend remoto y Terraform escribió el estado |
+| Tamaño de 3.3 KB | Guarda pocos recursos, solo lo creado hasta el momento |
+| Fecha de modificación (23 nov 2026, 17:48) | Fue escrito por el pipeline durante la ejecución |
+
+Antes del primer push, el bucket estaba vacío (`Objects (0)`). Que el archivo aparezca confirma que las credenciales de los secretos funcionan y que el backend está bien configurado. Aunque el `terraform apply` terminó con un error de permisos, Terraform guardó el avance en el state, por lo que al repetir el pipeline continuará desde ese punto.
 
 ## Seguridad y limpieza
 
